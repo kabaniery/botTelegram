@@ -8,7 +8,6 @@ import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
 import org.telegram.telegrambots.meta.api.objects.*;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
-import org.telegram.telegrambots.meta.api.methods.GetFile
 
 
 import java.io.File;
@@ -29,8 +28,7 @@ public class BotMain extends TelegramLongPollingBot {
         return "kabanieryBotExample_bot";
     }
 
-    @Override
-    public String getBotToken() {
+    public static String getToken() {
         return "6014408564:AAGzkX8MgIZJbj2L8hH8j0YIo9p7LlB9jkI";
     }
 
@@ -40,7 +38,6 @@ public class BotMain extends TelegramLongPollingBot {
         User usr = msg.getFrom();
         Chat chat = msg.getChat();
         msg.getChatId();
-        Chat chat = new Chat(msg.getChatId(), )
         //Most import data
         Long id = usr.getId();
         String txt = msg.getText();

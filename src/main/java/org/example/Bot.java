@@ -6,8 +6,12 @@ import org.db.DataBase;
 import org.db.HtmlRequest;
 import org.session.LastSessions;
 import org.session.UserSession;
+import org.session.chatSession;
+import org.session.groupSessions;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
+import org.telegram.telegrambots.meta.api.objects.InputFile;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.User;
@@ -20,9 +24,7 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.*;
 
 import javax.validation.constraints.Negative;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.IOException;
+import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -36,11 +38,13 @@ public class Bot extends TelegramLongPollingBot {
     private boolean limMode = false;
     //Session Properties
     private LastSessions session;
-    private DataBase.Draw draw;
+    private groupSessions chats;
+    public DataBase.Draw draw;
 
 
     Bot(String name) {
         this.session = new LastSessions(maxUsersCount);
+        this.chats = new groupSessions();
         Path of = Path.of(name);
         if (!Files.isRegularFile(of)) {
             try {
@@ -69,171 +73,35 @@ public class Bot extends TelegramLongPollingBot {
         User usr = msg.getFrom();
         Long id = usr.getId();
         String txt = msg.getText();
-
         DataBase base = new DataBase();
+        if (!msg.getChat().isUserChat()) {
+            //TODO: Создать конструктор чатов
+            if (this.chats.getChat(msg.getChatId()) == null) {
+                this.chats.addSession(new chatSession(msg.getChatId(), this));
+            }
+            this.chats.getChat(msg.getChatId()).update(msg);
+            //sendMessage(msg.getChatId(), "Hi");
+        } else {
+            if (draw != null && draw.getActive()) {
+                draw.addNewUser(id, usr.getUserName());
+            }
+            if (txt.equals("/start")) {
+                this.session.addNewUserSession(new UserSession(id, false, this));
 
-        if (draw.getActive()) {
-            draw.addNewUser(id, usr.getUserName());
-        }
-
-        if (msg.getText() == null) {
-            UserSession user = this.session.getUserSession(id);
-            switch (user.getLastCommand()) {
-                case ADDNEWBOOK -> {
-                    String path = HtmlRequest.getFile(getBotToken(), msg.getDocument().getFileId());
-                    if (path != null) {
-                        try {
-                            CSVReader reader = new CSVReader(new FileReader(path));
-                            String[] line;
-                            while ((line = reader.readNext()) != null) {
-                                DataBase.Books.setNewBook(user, line);
-                            }
-                        } catch (CsvValidationException | IOException e) {
-                            System.out.println("Error while updating file");
-                            System.out.println(e.getMessage());
-                        }
-                        try {
-                            Files.delete(Path.of(path));
-                        } catch (IOException e) {}
-                    }
-                }
-            }
-            return;
-        }
-        if (txt.equals("/logmode") && new UserSession(id, "/admin").isAdmin()) {
-            logMode = !logMode;
-        }
-        if (logMode) {
-            System.out.println(id.toString() + ": " + txt);
-        }
-        switch (txt) {
-            case "Choose a book\uD83D\uDCD6" -> {
-                UserSession user = new UserSession(id, txt);
-                this.session.addNewUserSession(user);
-                sendMessage(id, "Write title or id of book", getFindKeyboard());
-            }
-            case "Book list \uD83D\uDCDA" -> {
-                List<ArrayDeque<String>> result = DataBase.Books.getTitles();
-                if (result != null && !result.isEmpty()) {
-                    //Выводим список. Иначе спим
-                    int currentLength = 0;
-                    String line;
-                    StringBuilder message = new StringBuilder();
-                    for (ArrayDeque<String> elem : result) {
-                        line = elem.getFirst() + "; " + elem.getLast();
-                        if (currentLength + 1 + line.length() < 4096) {
-                            message.append(line).append("\n");
-                            currentLength += line.length() + 1;
-                        } else {
-                            createAndSendMessage(id, message.toString(), false);
-                            currentLength = line.length();
-                            message = new StringBuilder(line);
-                        }
-                    }
-                    if (!message.isEmpty()) {
-                        createAndSendMessage(id, message.toString(), false);
-                    }
-                }
-
-                this.session.removeUserSession(id);
-            }
-            case "Donations \uD83D\uDCB8" -> {
-                //TODO: On developing
-                sendMessage(id, "Coming soon");
-            }
-            case "/start" -> {
-                sendMessage(id, "Hello. I am Ginzburg foundation. What does you want?", getDefaulKeyboard());
-                this.session.removeUserSession(id);
-            }
-            case "/admin" -> {
-                if (DataBase.isAdmin(id)) {
-                    sendMessage(id, "Hello, boss", getAdminKeyboard());
-                    this.session.addNewUserSession(new UserSession(id, "/admin"));
-                }
-            }
-            default -> {
+            } else {
+                //Getting userCommand
                 UserSession user = this.session.getUserSession(id);
                 if (user == null) {
-                    sendMessage(id, "Doesn't understand what do you mean", getDefaulKeyboard());
-                    this.session.removeUserSession(id);
-                } else if (user.isAdmin()) {
-                    DataBase.Admins.Warn(this, txt, String.valueOf(id));
-                    switch (txt) {
-                        case "Add new book" -> {
-                            sendMessage(id, "Send Table");
-                            user.trySetNewCommand("/addNewBook");
-                        }
-                        case "Format database" -> {
-                            sendMessage(id, "Are you sure? Print \"Yes\" to format all library");
-                            user.trySetNewCommand("/formatBooks");
-                        }
-                        case "Add new admin" -> {
-                            sendMessage(id, "Write his id");
-                            user.trySetNewCommand("/addAdmin");
-                        }
-                        case "Remove existing admin" -> {
-                            sendMessage(id, "Write his id");
-                            user.trySetNewCommand("/deleteAdmin");
-                        }
-                        case "Get Admins List" -> {
-                            List<String> list = DataBase.Admins.getAdmins(user);
-                            if (list != null) {
-                                createAndSendMessage(id, list, true);
-                            } else {
-                                sendMessage(id, "I can't understand why there is no administrators...");
-                            }
-                        }
-                        case "Start draw" -> {
-                            this.draw = new DataBase.Draw();
-                        }
-                        case "Stop draw" -> {
-                            sendMessage(id, "Draw winner is " + draw.getResults());
-                        }
-
-                        default -> {
-                            switch (user.getLastCommand()) {
-                                case FORMATBOOKS -> {
-                                    if (txt.equals("Yes")) {
-                                        DataBase.Books.rebaseTable(user);
-                                    } else {
-                                        sendMessage(id, "Okay");
-                                    }
-                                    user.trySetNewCommand("");
-                                }
-                                case ADDNEWADMIN -> DataBase.Admins.addNewAdmin(user, Long.parseLong(txt));
-                                case DELETEADMIN -> DataBase.Admins.removeAdmin(user, Long.parseLong(txt));
-                                default -> {
-                                    sendMessage(id, "Returning to the default keyboard", getDefaulKeyboard());
-                                    this.session.removeUserSession(id);
-                                }
-                            }
-
-                        }
-                    }
-                } else {
-                    switch (user.getLastCommand()) {
-                        case GETBOOK -> {
-                            if (txt.equals("Back...")) {
-                                sendMessage(id, "Please, choose the command", getDefaulKeyboard());
-                                return;
-                            }
-                            ArrayDeque<String[]> result = DataBase.Books.getBookByName(txt);
-                            if (result != null && !result.isEmpty()) {
-                                for (String[] elem : result) {
-                                    createAndSendMessage(id, elem[0] + "\n Link for downloading: " + elem[1], false);
-                                }
-                            } else {
-                                sendMessage(id, "There is no results...", getDefaulKeyboard());
-                            }
-                            this.session.removeUserSession(id);
-                        }
-
-                        default -> {sendMessage(id, "Doesn't understand what do you mean", getDefaulKeyboard());}
-                    }
+                    //TODO: Вытащить пользователя из базы данных
+                    this.session.addNewUserSession((user = new UserSession(id, false, this)));
                 }
+                user.update(msg);
             }
-
         }
+    }
+
+    public void sendChatMesage(Long id, String txt) {
+
     }
 
     public void sendMessage(Long id, String txt) {
@@ -245,7 +113,7 @@ public class Bot extends TelegramLongPollingBot {
         }
     }
 
-    private void sendMessage(Long id, String txt, ReplyKeyboard keyboardMarkup) {
+    public void sendMessage(Long id, String txt, ReplyKeyboard keyboardMarkup) {
         SendMessage message = new SendMessage(id.toString(),0, txt, "", false,
                 false, 0, keyboardMarkup, null, true, false);
         try {
@@ -254,18 +122,59 @@ public class Bot extends TelegramLongPollingBot {
             System.out.println(e.getMessage());
         }
     }
+    public void sendMessage(Long id, String txt, int messageId) {
+        SendMessage message = new SendMessage(id.toString(),0, txt, "", false,
+                false, messageId, null, null, true, false);
+        try {
+            execute(message);
+        } catch (TelegramApiException e) {
+            System.out.println(e.getMessage());
+        }
+    }
 
-    private int createAndSendMessage(Long id, String result, boolean safeKeyboard) {
-        if (!safeKeyboard) {
+    public int createAndSendMessage(Long id, String result, int messageId) {
+        if (result == null) {
+            sendMessage(id, "Query function is not available right now. Please try later...", messageId);
+            return -1;
+        } else {
+            while (result.length() >= 4096) {
+                sendMessage(id, result.substring(0, 4094), messageId);
+                result = result.substring(4095, result.length() - 1);
+            }
+            sendMessage(id, result, messageId);
+            return 0;
+        }
+    }
+    public void createAndSendMessage(Long id, List<String> result, int messageId) {
+        StringBuilder temp = new StringBuilder();
+        int length = 0;
+        for (String elem: result) {
+            if (length + elem.length() + 1 < 4096) {
+                temp.append(elem).append("\n");
+                length += elem.length() + 1;
+            } else {
+                createAndSendMessage(id, temp.toString(), messageId);
+                temp = new StringBuilder(elem);
+                length = elem.length();
+            }
+        }
+
+        if (!temp.isEmpty()) {
+            createAndSendMessage(id, temp.toString(), messageId);
+        }
+    }
+
+    public int createAndSendMessage(Long id, String result, ReplyKeyboardMarkup keyboardMarkup) {
+        if (keyboardMarkup != null) {
             if (result == null) {
-                sendMessage(id, "Query function is not avaible right now. Please try later...", getDefaulKeyboard());
+                sendMessage(id, "Query function is not avaible right now. Please try later...", keyboardMarkup);
                 return -1;
             } else {
                 while (result.length() >= 4096) {
-                    sendMessage(id, result.substring(0, 4094), getDefaulKeyboard());
+                    sendMessage(id, result.substring(0, 4094), keyboardMarkup);
                     result = result.substring(4095, result.length() - 1);
                 }
-                sendMessage(id, result, getDefaulKeyboard());
+                sendMessage(id, result, keyboardMarkup);
                 return 0;
             }
         } else {
@@ -282,26 +191,11 @@ public class Bot extends TelegramLongPollingBot {
             }
         }
     }
-    private void createAndSendMessage(Long id, List<String> result, boolean safeKeyboard) {
-        StringBuilder temp = new StringBuilder();
-        int length = 0;
-        for (String elem: result) {
-            if (length + elem.length() + 1 < 4096) {
-                temp.append(elem).append("\n");
-                length += elem.length() + 1;
-            } else {
-                createAndSendMessage(id, temp.toString(), safeKeyboard);
-                temp = new StringBuilder(elem);
-                length = elem.length();
-            }
-        }
+    public void createAndSendMessage(Long id, List<String> result, ReplyKeyboardMarkup keyboardMarkup) {
 
-        if (!temp.isEmpty()) {
-            createAndSendMessage(id, temp.toString(), safeKeyboard);
-        }
     }
 
-    private ReplyKeyboardMarkup getDefaulKeyboard() {
+    public ReplyKeyboardMarkup getDefaulKeyboard() {
         ReplyKeyboardMarkup res = new ReplyKeyboardMarkup(getButtons(new String[][]{{"Book list \uD83D\uDCDA", "Choose a book\uD83D\uDCD6"}, {"Donations \uD83D\uDCB8"}}));
         res.setResizeKeyboard(true);
         return res;
@@ -312,15 +206,15 @@ public class Bot extends TelegramLongPollingBot {
             return new ReplyKeyboardMarkup(rows);
          */
     }
-    private static ReplyKeyboardRemove keyboardRemove() {
+    public static ReplyKeyboardRemove keyboardRemove() {
         return new ReplyKeyboardRemove(true);
     }
-    private static ReplyKeyboardMarkup getFindKeyboard() {
+    public static ReplyKeyboardMarkup getFindKeyboard() {
         ReplyKeyboardMarkup res = new ReplyKeyboardMarkup(getButtons(new String[][]{{"Back..."}}));
         res.setResizeKeyboard(true);
         return res;
     }
-    private static ReplyKeyboardMarkup getAdminKeyboard() {
+    public static ReplyKeyboardMarkup getAdminKeyboard() {
         ReplyKeyboardMarkup res = new ReplyKeyboardMarkup(getButtons(new String[][]{{"Add new book", "Format database"}, {"Add new admin", "Remove existing admin", "Get Admins List"}, {"Start draw", "Stop draw"}}), true, false, false, null, false);
         return res;
         /*
@@ -329,7 +223,13 @@ public class Bot extends TelegramLongPollingBot {
         return new ReplyKeyboardMarkup(rows);
          */
     }
-    private static List<KeyboardRow> getButtons(String[][] values) {
+
+    public static ReplyKeyboardMarkup getKeyboard(String[][] buttons) {
+        ReplyKeyboardMarkup res = new ReplyKeyboardMarkup(getButtons(buttons), true, false, false, null, false);
+        return res;
+    }
+    
+    public static List<KeyboardRow> getButtons(String[][] values) {
         List<KeyboardRow> result = new ArrayList<>();
         KeyboardRow keyboardRow;
         for (String[] row: values) {
@@ -341,4 +241,150 @@ public class Bot extends TelegramLongPollingBot {
         }
         return result;
     }
+
+    //New
+    public void defaultMessage(Long id) {
+        sendMessage(id, "Please type correct button");
+    }
+    public void SendMessages(Long id, List<String> Text, ReplyKeyboard keyboard) {
+        StringBuilder result = new StringBuilder();
+        int length = 0;
+        for (String elem: Text) {
+            if (elem.length() >= 4096) {
+                if (!result.isEmpty())
+                    sendMessage(id, result.toString(), (ReplyKeyboard) null);
+                while (elem.length() >= 4096) {
+                    sendMessage(id, elem.substring(0, 4095), (ReplyKeyboard) null);
+                    elem = elem.substring(4095, elem.length()-1);
+                }
+                continue;
+            }
+            if (length + elem.length() + 1 < 4096) {
+                result.append(elem).append("\n");
+                length += elem.length() + 1;
+            }
+            else {
+                sendMessage(id, result.toString(), (ReplyKeyboard) null);
+                result = new StringBuilder(elem);
+                length = elem.length();
+            }
+        }
+        if (!result.isEmpty()) {
+            sendMessage(id, result.toString(), (ReplyKeyboard) null);
+        }
+    }
+    public void SendMessages(Long id, List<String> Text, String pathToImage, ReplyKeyboard keyboard) {
+        String image = String.valueOf(pathToImage);
+        StringBuilder result = new StringBuilder();
+        int length = 0;
+        for (String elem: Text) {
+            if (elem.length() >= 4096) {
+                if (!result.isEmpty()) {
+                    sendMessage(id, result.toString(), image, keyboard);
+                    image = null;
+                }
+                while (elem.length() >= 4096) {
+                    sendMessage(id, elem.substring(0, 4095), image, keyboard);
+                    image = null;
+                    elem = elem.substring(4095, elem.length()-1);
+                }
+                continue;
+            }
+            if (length + elem.length() + 1 < 4096) {
+                result.append(elem).append("\n");
+                length += elem.length() + 1;
+            }
+            else {
+                sendMessage(id, result.toString(), image, keyboard);
+                image = null;
+                result = new StringBuilder(elem);
+                length = elem.length();
+            }
+        }
+        if (!result.isEmpty()) {
+            sendMessage(id, result.toString(), image, keyboard);
+        }
+    }
+
+    private int sendMessage(Long id, String text, String url, ReplyKeyboard keyboard) {
+        SendMessage message;
+        if (url != null) {
+            message = new SendMessage(id.toString(), "[]("+url+")"+text);
+            message.setParseMode("markdown");
+            message.setReplyMarkup(keyboard);
+        } else {
+            message = new SendMessage(id.toString(), text);
+            message.setReplyMarkup(keyboard);
+        }
+        try {
+            execute(message);
+        } catch (TelegramApiException e) {
+            System.out.println(e.getMessage());
+            return -1;
+        }
+        return 0;
+    }
+
+    public int sendImage(Long id, String pathToImage) {
+        SendPhoto photo = new SendPhoto(id.toString(), new InputFile(new File(pathToImage)));
+        try {
+            execute(photo);
+        } catch (TelegramApiException e) {
+            System.out.println(e.getMessage());
+            return -1;
+        }
+        return  0;
+    }
+
+    //Из другого бота
+    public void SendMessages(Long id, List<String> Text, String pathToImage) {
+        String image = String.valueOf(pathToImage);
+        StringBuilder result = new StringBuilder();
+        int length = 0;
+        for (String elem: Text) {
+            if (elem.length() >= 4096) {
+                if (!result.isEmpty()) {
+                    sendMessage(id, result.toString(), image);
+                    image = null;
+                }
+                while (elem.length() >= 4096) {
+                    sendMessage(id, elem.substring(0, 4095), image);
+                    image = null;
+                    elem = elem.substring(4095, elem.length()-1);
+                }
+                continue;
+            }
+            if (length + elem.length() + 1 < 4096) {
+                result.append(elem).append("\n");
+                length += elem.length() + 1;
+            }
+            else {
+                sendMessage(id, result.toString(), image);
+                image = null;
+                result = new StringBuilder(elem);
+                length = elem.length();
+            }
+        }
+        if (!result.isEmpty()) {
+            sendMessage(id, result.toString(), image);
+        }
+    }
+
+    private int sendMessage(Long id, String text, String url) {
+        SendMessage message;
+        if (url != null) {
+            message = new SendMessage(id.toString(), "[]("+url+")"+text);
+            message.setParseMode("markdown");
+        } else {
+            message = new SendMessage(id.toString(), text);
+        }
+        try {
+            execute(message);
+        } catch (TelegramApiException e) {
+            System.out.println(e.getMessage());
+            return -1;
+        }
+        return 0;
+    }
+
 }

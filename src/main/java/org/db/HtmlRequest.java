@@ -90,4 +90,16 @@ public class HtmlRequest {
         }
         return null;
     }
+
+    public static String getChatMember(Long chatId, Long userId, String token) {
+        InputStream stream = openConnection("https://api.telegram.org/bot" + token + "/getChatMember?chat_id="+chatId+"&user_id="+userId);
+        BufferedReader reader = new BufferedReader(new InputStreamReader(stream));
+        try {
+            JSONObject object = new JSONObject(reader.readLine());
+            JSONObject resultObj = object.getJSONObject("result");
+            return resultObj.getString("status");
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
 }

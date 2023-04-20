@@ -5,11 +5,29 @@ import org.session.UserSession;
 import org.telegram.telegrambots.meta.api.objects.User;
 
 import java.sql.*;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 public class DataBase {
+    private static class bookVal {
+        public int count;
+        public int id;
+        public bookVal(int count, int id) {
+            this.id = id;
+            this.count = count;
+        }
+    }
+    private static String getValueWithQuotes(String value) {
+        return "\"" + value + "\"";
+    }
+    private static String formatTitle(String value) {
+        String result = "";
+        for (char elem: value.toCharArray()) {
+            if (elem != '\"')
+                result += elem;
+        }
+        return result;
+    }
+
     private static String url = "jdbc:mysql://localhost:3306/botinformation";
     private static String name = "root";
     private static String password = "dZD3hKQs84ztnnun";
@@ -41,13 +59,14 @@ public class DataBase {
                 }
             }
             try {
+                id += 1;
                 this.drawDB = "draw" + id.toString();
                 st.executeUpdate("CREATE TABLE `" + drawDB + "` (\n" +
                         "  `id` BIGINT(20) NOT NULL,\n" +
                         "  `username` MEDIUMTEXT NULL,\n" +
                         "  PRIMARY KEY (`id`),\n" +
                         "  UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE);");
-                id += 1;
+
             } catch (SQLException e) {
                 System.out.println("Can't create a draw");
                 System.out.println(e.getMessage());
@@ -110,18 +129,75 @@ public class DataBase {
 
     }
     public static class Books {
-        private static String booksDB = "books";
+        public static class Book {
+            public int id;
+            public String title;
+            public int year;
+            public String authors;
+            public String genres;
+            public String language;
+            public String link;
+            public int genresCode;
+            public String description;
+        }
+
+        public static Book getBook(String id, int theme) {
+            if (st == null) {
+                if (DataBase.reconnect() == -1)
+                    return null;
+            }
+            try {
+                ResultSet rt = st.executeQuery("select *\n from " + booksDB[theme] + "\n where id = " + id);
+                if (rt.next()) {
+                    Book result = new Book();
+                    result.id = rt.getInt("id");
+                    result.title = rt.getNString("title");
+                    result.authors = rt.getNString("authors");
+                    result.description = rt.getNString("description");
+                    result.genresCode = rt.getInt("genresCode");
+                    result.genres = rt.getNString("genres");
+                    result.language = rt.getNString("language");
+                    result.link = rt.getNString("link");
+                    result.year = rt.getInt("year");
+                    return result;
+                }
+            } catch (SQLException e) {
+                System.out.println(e.getMessage());
+            }
+            return null;
+        }
+
+
+        private static final String[] booksDB = {null, "culture", "medicine", "books", "economic", "climate", "art"};
+
         //-1 means can't connect to the database; -2 means error in executing query
-        public static int setNewBook(UserSession user, String[] values) {
+        public static int setNewBook(UserSession user, String[] values, int theme) {
             if (st == null) {
                 if (DataBase.reconnect() == -1) {
                     return -1;
                 }
             }
             if (user.isAdmin() && values.length == 7 && !values[1].equals("") && !values[6].equals("http://www.apple.com#")) {
+                if (values[2].equals("не указано"))
+                    values[2] = "-1";
                 try {
-                        st.executeUpdate("insert into " + booksDB + "\n values (NULL, \"" + values[1] + "\", \"" +("Genre - " + values[4] + "; Autors - " + values[3] + "; Year - " + values[2])+ "\", \"" + values[6] + "\");");
+                    st.executeUpdate("insert into " + booksDB[theme] + "\n values (NULL, " + getValueWithQuotes(formatTitle(values[1])) + ", " +
+                            values[2] + ", " +
+                            getValueWithQuotes(values[3]) + ", " +
+                            getValueWithQuotes(values[4]) + ", " +
+                            getValueWithQuotes(values[5]) + ", " +
+                            getValueWithQuotes(values[6]) + ", " +
+                            PythonScripts.getGenresCode(values[4].split(", ")) + ", " +
+                            getValueWithQuotes("Genre - " + values[4] + "; Autors - " + values[3] + "; Year - " + values[2]) + ");");
                 } catch (SQLException e) {
+                    System.out.println("insert into " + booksDB[theme] + "\n values (NULL, " + getValueWithQuotes(values[1]) + ", " +
+                            values[2] + ", " +
+                            getValueWithQuotes(values[3]) + ", " +
+                            getValueWithQuotes(values[4]) + ", " +
+                            getValueWithQuotes(values[5]) + ", " +
+                            getValueWithQuotes(values[6]) + ", " +
+                            PythonScripts.getGenresCode(values[4].split(", ")) + ", " +
+                            getValueWithQuotes("Genre - " + values[4] + "; Autors - " + values[3] + "; Year - " + values[2]) + ");");
                     System.out.println(e.getMessage());
                     System.out.println(e.getErrorCode());
                     return -2;
@@ -130,7 +206,56 @@ public class DataBase {
             return 0;
         }
 
-        public static ArrayDeque<String[]> getBookByName(String title) {
+        public static int[] getRecommendation(String[] genres, int theme) {
+            int[] codes = new int[genres.length];
+            int sum = 0;
+            for (int i = 0; i < codes.length; ++i) {
+                codes[i] = PythonScripts.getGenresCode(new String[]{genres[i]});
+                sum += codes[i];
+            }
+            if (st == null) {
+                if (DataBase.reconnect() == -1)
+                    return null;
+            }
+            try {
+                ResultSet rt = st.executeQuery("select id, genresCode\n from " + booksDB[theme]);
+                bookVal[] mass = new bookVal[10];
+                int index = 0;
+                while (rt.next()) {
+                    int code = rt.getInt("genresCode");
+                    if ((code & sum) != 0) {
+                        int count = 0;
+                        for (int c : codes) {
+                            if ((c & code) == c) {
+                                count++;
+                            }
+                        }
+                        if (index < 10) {
+                            mass[index] = new bookVal(count, rt.getInt("id"));
+                            index++;
+                        } else {
+                            Arrays.sort(mass, Comparator.comparingInt((bookVal elem) -> elem.count));
+                            if (mass[0].count < count)
+                                mass[0] = new bookVal(count, rt.getInt("id"));
+                        }
+                    }
+                }
+                if (index < 10) {
+                    mass = Arrays.copyOf(mass, index + 1);
+                }
+                Arrays.sort(mass, (bookVal elem1, bookVal elem2) -> elem2.count - elem1.count);
+                int[] result = new int[mass.length];
+                for (int i = 0; i < mass.length; ++i) {
+                    result[i] = mass[i].id;
+                }
+                return result;
+            } catch (SQLException e) {
+                System.out.println(e.getMessage());
+            }
+            return null;
+        }
+
+        public static ArrayDeque<String[]> getBookByName(String title, int theme) {
             if (st == null) {
                 if (DataBase.reconnect() == -1) {
                     return null;
@@ -138,7 +263,7 @@ public class DataBase {
             }
             ArrayDeque<String[]> result = new ArrayDeque<>();
             try {
-                ResultSet rt = st.executeQuery("select description, link\n from " + booksDB + "\n where title = \"" + title + "\";");
+                ResultSet rt = st.executeQuery("select description, link\n from " + booksDB[theme] + "\n where title = \"" + title + "\";");
                 if (rt.next()) {
                     result.add(new String[]{rt.getNString("description"), rt.getNString("link")});
                 }
@@ -147,7 +272,7 @@ public class DataBase {
                 System.out.println(e.getErrorCode());
             }
             try {
-                ResultSet rt = st.executeQuery("select description, link\n from " + booksDB + "\n where id = " + title + ";");
+                ResultSet rt = st.executeQuery("select description, link\n from " + booksDB[theme] + "\n where id = " + title + ";");
                 if (rt.next()) {
                     result.add(new String[]{rt.getNString("description"), rt.getNString("link")});
                 }
@@ -157,17 +282,28 @@ public class DataBase {
             }
             return result;
         }
+
         //Get name and description
-        public static List<ArrayDeque<String>> getTitles() {
+        public static List<ArrayDeque<String>> getTitles(int theme) {
             if (st == null) {
                 if (DataBase.reconnect() == -1) {
                     return null;
                 }
             }
             try {
-                ResultSet rt = st.executeQuery("select id, title, description\n from " + booksDB);
+                ResultSet rt = st.executeQuery("select id, title, description\n from " + booksDB[theme]);
                 ArrayDeque<String> tmp = new ArrayDeque<String>();
                 List<ArrayDeque<String>> result = new ArrayList<ArrayDeque<String>>();
+                if (rt.next()) {
+                    tmp.add(rt.getInt("id") + ". " + rt.getNString("title"));
+                    tmp.add(rt.getNString("description"));
+                    result.add(tmp);
+                    tmp = new ArrayDeque<String>();
+                } else {
+                    tmp.add("Error");
+                    tmp.add("library is empty");
+                    result.add(tmp);
+                }
                 while (rt.next()) {
                     tmp.add(rt.getInt("id") + ". " + rt.getNString("title"));
                     tmp.add(rt.getNString("description"));
@@ -182,7 +318,7 @@ public class DataBase {
             }
         }
 
-        public static void rebaseTable(UserSession user) {
+        public static void rebaseTable(UserSession user, int theme) {
             if (user.isAdmin()) {
                 if (st == null) {
                     if (DataBase.reconnect() == -1) {
@@ -190,13 +326,19 @@ public class DataBase {
                     }
                 }
                 try {
-                    st.executeUpdate("drop table " + booksDB);
-                    st.executeUpdate("CREATE TABLE `botinformation`.`" + booksDB + "` (\n" +
+                    st.executeUpdate("drop table " + booksDB[theme]);
+                    st.executeUpdate("CREATE TABLE `botinformation`.`" + booksDB[theme] + "` (\n" +
                             "  `id` INT NOT NULL AUTO_INCREMENT,\n" +
                             "  `title` VARCHAR(200) NULL,\n" +
-                            "  `description` LONGTEXT NULL,\n" +
+                            "  `year` INT NULL,\n" +
+                            "  `authors` LONGTEXT NULL,\n" +
+                            "  `genres` MEDIUMTEXT NULL,\n" +
+                            "  `language` VARCHAR(45) NULL,\n" +
                             "  `link` MEDIUMTEXT NULL,\n" +
-                            "  PRIMARY KEY (`id`));\n");
+                            "  `genresCode` INT NULL,\n" +
+                            "  `description` LONGTEXT NULL,\n" +
+                            "  PRIMARY KEY (`id`),\n" +
+                            "  UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE);");
                 } catch (SQLException e) {
                     System.out.println("Can't refresh base");
                     System.out.println(e.getMessage());
