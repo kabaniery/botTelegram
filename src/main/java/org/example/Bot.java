@@ -9,12 +9,14 @@ import org.session.UserSession;
 import org.session.chatSession;
 import org.session.groupSessions;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
+import org.telegram.telegrambots.meta.api.methods.polls.SendPoll;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
 import org.telegram.telegrambots.meta.api.objects.InputFile;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.User;
+import org.telegram.telegrambots.meta.api.objects.polls.Poll;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboard;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardRemove;
@@ -76,6 +78,12 @@ public class Bot extends TelegramLongPollingBot {
         DataBase base = new DataBase();
         if (!msg.getChat().isUserChat()) {
             //TODO: Создать конструктор чатов
+            SendPoll poll = new SendPoll(msg.getChatId().toString(), "Bot question", List.of("option1", "option2"));
+            try {
+                execute(poll);
+            } catch (TelegramApiException e) {
+                throw new RuntimeException(e);
+            }
             if (this.chats.getChat(msg.getChatId()) == null) {
                 this.chats.addSession(new chatSession(msg.getChatId(), this));
             }
@@ -85,9 +93,19 @@ public class Bot extends TelegramLongPollingBot {
             if (draw != null && draw.getActive()) {
                 draw.addNewUser(id, usr.getUserName());
             }
-            if (txt.equals("/start")) {
-                this.session.addNewUserSession(new UserSession(id, false, this));
+            if (txt == null) {
 
+                UserSession user = this.session.getUserSession(id);
+                if (user == null) {
+                    //TODO: Вытащить пользователя из базы данных
+                    this.session.addNewUserSession((user = new UserSession(id, false, this)));
+                }
+                System.out.println("a");
+                user.update(msg);
+                System.out.println("b");
+            }
+            else if (txt.equals("/start")) {
+                this.session.addNewUserSession(new UserSession(id, false, this));
             } else {
                 //Getting userCommand
                 UserSession user = this.session.getUserSession(id);

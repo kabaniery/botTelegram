@@ -30,7 +30,7 @@ public class UserSession {
     private static final String[][] adminDrawKb = {{"Start draw", "Stop draw"}, {"Back"}};
     //User's keyboard
     private static final String[][] defaulUserKb = {{"Go to library"}, {"ChatGPT", "Other"}};
-    private static final String[][] libraryThemes = {{"Культура", "Медицина"}, {"Наука", "Экономика"}, {"Климат", "Искусство"}, {"Back"}};
+    private static final String[][] libraryThemes = {{"Culture", "Medicine"}, {"Наука", "Economics"}, {"Climate", "Art"}, {"Back"}};
     private static final String[][] userBookKb = {{"Find book", "Recommend book"}, {"Get library"}, {"Back"}};
     private static final String[][] userOtherKb = {{"Donations"}, {"Buy ADS"}, {"Back"}};
     private static final String[][] userChatgptKb = {{"Quit ChatGPT dialog /\\/\\"}, {"/Clear bot history"}};
@@ -61,28 +61,27 @@ public class UserSession {
 
 
     public void update(Message command) {
-        System.out.println(this.state);
         if ((this.state & 1) == 1) {
             switch(((this.state >> 1) & 7)) {
                 case 1 -> {
                     if (((this.state >> 4) & 7) == 0) {
                         switch (command.getText()) {
-                            case "Культура":
+                            case "Culture":
                                 this.state += (1 << 4);
                                 break;
-                            case "Медицина":
+                            case "Medicine":
                                 this.state += (2 << 4);
                                 break;
                             case "Наука":
                                 this.state += (3 << 4);
                                 break;
-                            case "Экономика":
+                            case "Economics":
                                 this.state += (4 << 4);
                                 break;
-                            case "Климат":
+                            case "Climate":
                                 this.state += (5 << 4);
                                 break;
-                            case "Искусство":
+                            case "Art":
                                 this.state += (6 << 4);
                                 break;
                             case "Back":
@@ -91,10 +90,7 @@ public class UserSession {
                         //TODO:Удалить, как добавят новые бд
                         if (this.state == 1) {
                             bot.sendMessage(id, "Type a command", Bot.getKeyboard(defaultAdminKb));
-                        } /*else if (((this.state >> 4) & 7) != 3) {
-                            bot.sendMessage(id, "On developing \uD83D\uDEE0", Bot.getKeyboard(libraryThemes));
-                            this.state -= ((this.state >> 4) & 7) << 4;
-                        } */else {
+                        } else {
                             bot.sendMessage(id, "What do you learn about?", Bot.getKeyboard(adminBookKb));
                         }
                     } else {
@@ -102,7 +98,7 @@ public class UserSession {
                             case 1 -> {
                                 this.state -= 1 << 7;
                                 String path = HtmlRequest.getFile(bot.getBotToken(), command.getDocument().getFileId());
-                                System.out.println("asv");
+                                System.out.println(path);
                                 if (path != null) {
                                     try {
                                         CSVReader reader = new CSVReader(new FileReader(path));
@@ -112,14 +108,18 @@ public class UserSession {
                                         while ((line = reader.readNext()) != null) {
                                             DataBase.Books.setNewBook(this, line, (this.state >> 4) & 7);
                                         }
+                                        reader.close();
                                     } catch (CsvValidationException | IOException e) {
                                         System.out.println("Error while updating file");
                                         System.out.println(e.getMessage());
                                     }
                                     try {
                                         Files.delete(Path.of(path));
-                                    } catch (IOException e) {}
+                                    } catch (IOException e) {
+                                        System.out.println(e.getMessage());
+                                    }
                                     bot.sendMessage(id, "Success!", Bot.getKeyboard(adminBookKb));
+                                    return;
                                 }
                                 bot.sendMessage(id, "Something went wrong");
                             }
@@ -234,12 +234,12 @@ public class UserSession {
                 case 1 -> {
                     if (((this.state >> 4) & 7) == 0) {
                         switch (command.getText()) {
-                            case "Культура" -> this.state += (1 << 4);
-                            case "Медицина" -> this.state += (2 << 4);
-                            case "Наука" -> this.state += (3 << 4);
-                            case "Экономика" -> this.state += (4 << 4);
-                            case "Климат" -> this.state += (5 << 4);
-                            case "Искусство" -> this.state += (6 << 4);
+                            case "Culture" -> this.state += (1 << 4);
+                            case "Medicine" -> this.state += (2 << 4);
+                            case "Science" -> this.state += (3 << 4);
+                            case "Economics" -> this.state += (4 << 4);
+                            case "Climate" -> this.state += (5 << 4);
+                            case "Art" -> this.state += (6 << 4);
                             case "Back" -> this.state = 0;
                         }
                         //TODO:Удалить, как добавят новые бд

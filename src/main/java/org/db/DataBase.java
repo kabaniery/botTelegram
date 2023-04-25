@@ -29,7 +29,7 @@ public class DataBase {
     }
 
     private static String url = "jdbc:mysql://localhost:3306/botinformation";
-    private static String name = "root";
+    private static String name = "telegrambot";
     private static String password = "dZD3hKQs84ztnnun";
     private static String searchDB = "searchinfo";
 
@@ -326,7 +326,7 @@ public class DataBase {
                     }
                 }
                 try {
-                    st.executeUpdate("drop table " + booksDB[theme]);
+                    //st.executeUpdate("drop table " + booksDB[theme]);
                     st.executeUpdate("CREATE TABLE `botinformation`.`" + booksDB[theme] + "` (\n" +
                             "  `id` INT NOT NULL AUTO_INCREMENT,\n" +
                             "  `title` VARCHAR(200) NULL,\n" +
