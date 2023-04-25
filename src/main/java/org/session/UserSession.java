@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
+import java.util.Arrays;
 import java.util.List;
 
 public class UserSession {
@@ -24,366 +25,126 @@ public class UserSession {
     //New system
 
     //Admin's keyboard
-    private static final String[][] defaultAdminKb = {{"Library management"}, {"Admins panel"}, {"Draw settings"}, {"Turn off"}};
-    private static final String[][] adminBookKb = {{"Add new table"}, {"Format library"}, {"Back"}};
-    private static final String[][] adminAdminsKb = {{"Add new admin", "Delete existing admin"}, {"Get list of admins"}, {"Back"}};
-    private static final String[][] adminDrawKb = {{"Start draw", "Stop draw"}, {"Back"}};
-    //User's keyboard
-    private static final String[][] defaulUserKb = {{"Go to library"}, {"ChatGPT", "Other"}};
-    private static final String[][] libraryThemes = {{"Culture", "Medicine"}, {"Наука", "Economics"}, {"Climate", "Art"}, {"Back"}};
-    private static final String[][] userBookKb = {{"Find book", "Recommend book"}, {"Get library"}, {"Back"}};
-    private static final String[][] userOtherKb = {{"Donations"}, {"Buy ADS"}, {"Back"}};
-    private static final String[][] userChatgptKb = {{"Quit ChatGPT dialog /\\/\\"}, {"/Clear bot history"}};
+
 
     private int state;
     public boolean isAdmin() {
-        return (state & 1) == 1;
+        return (state & 4) == 1;
     }
-    public UserSession(Long id, boolean isAdmin, Bot bot)
+    public UserSession(Long id, boolean isChannel, Bot bot)
     {
         this.id = id;
         this.bot = bot;
-        if (isAdmin && DataBase.isAdmin(id)) {
-            this.state = 64;
-            Message msg = new Message();
-            msg.setText("/admin");
-            this.update(msg);
-            return;
-        }
-        if (isAdmin) {
+        if (isChannel) {
             bot.sendMessage(id, "Hello, I am Ginzburg foundation chat bot. Use \"Start draw\" and \"Get result\" to activate/deactivate draws");
         } else {
-            bot.sendMessage(id, "Hello, I am Ginzburg foundation bot. What do you want to learn about?", Bot.getKeyboard(defaulUserKb));
+            bot.sendMessage(id, "Hello, I am Ginzburg foundation bot. What do you want to learn about?", Bot.getKeyboard(languageKeyboard));
         }
         this.state = 0;
     }
 
 
+    private static final String[][] languageKeyboard = {{"English"}};
+    private static final String[][][][] keyboards = {{
+            {{"Library management"}, {"Admins panel"}, {"Draw settings"}, {"Turn off"}}, //default admins panel - 0
+            {{"Add new table"}, {"Format library"}, {"Back"}}, //Admins library panel - 1
+            {{"Add new admin", "Delete existing admin"}, {"Get list of admins"}, {"Back"}}, //Admins Admin panel - 2
+            {{"Start draw", "Stop draw"}, {"Back"}}, //Admin draw panel - 3
+            {{"Culture", "Medicine", "Science"}, {"Economics", "Climate", "Art"}, {"ChatGPT", "Other", "Reselect language"}}, //User default panel - 4
+            {{"Culture", "Medicine"}, {"Наука", "Economics"}, {"Climate", "Art"}, {"Back"}}, //Panel of themes - 5
+            {{"Find book", "Recommend book"}, {"Get library"}, {"Back"}}, //User library panel - 6
+            {{"Donations"}, {"Buy ADS"}, {"Back"}}, //User other panel - 7
+            {{"Quit ChatGPT dialog /\\/\\"}, {"/Clear bot history"}}, //User ChatGPT panel - 8
+    }};
+    private static final String[][] messages = {
+            {
+                "Choose a language",
+                    "Choose an action",
+                    "It's chatGPT assistant. Write an interesting question"
+            }
+            };
 
     public void update(Message command) {
-        if ((this.state & 1) == 1) {
-            switch(((this.state >> 1) & 7)) {
-                case 1 -> {
-                    if (((this.state >> 4) & 7) == 0) {
+        //Проверяем язык
+        switch(this.state & 7) {
+            //English
+            case 1 -> {
+                //Проверяем админство
+                if (((this.state >> 3) & 1) == 0) {
+                    //Панель пользователя
+                    //Если команда не выбрана, то выбираем её
+                    if (((this.state >> 4) & 15) == 0) {
                         switch (command.getText()) {
-                            case "Culture":
-                                this.state += (1 << 4);
-                                break;
-                            case "Medicine":
-                                this.state += (2 << 4);
-                                break;
-                            case "Наука":
-                                this.state += (3 << 4);
-                                break;
-                            case "Economics":
-                                this.state += (4 << 4);
-                                break;
-                            case "Climate":
-                                this.state += (5 << 4);
-                                break;
-                            case "Art":
-                                this.state += (6 << 4);
-                                break;
-                            case "Back":
-                                this.state = 1;
-                        }
-                        //TODO:Удалить, как добавят новые бд
-                        if (this.state == 1) {
-                            bot.sendMessage(id, "Type a command", Bot.getKeyboard(defaultAdminKb));
-                        } else {
-                            bot.sendMessage(id, "What do you learn about?", Bot.getKeyboard(adminBookKb));
-                        }
-                    } else {
-                        switch ((this.state >> 7) & 7) {
-                            case 1 -> {
-                                this.state -= 1 << 7;
-                                String path = HtmlRequest.getFile(bot.getBotToken(), command.getDocument().getFileId());
-                                System.out.println(path);
-                                if (path != null) {
-                                    try {
-                                        CSVReader reader = new CSVReader(new FileReader(path));
-                                        String[] line;
-                                        reader.readNext();
-                                        reader.readNext();
-                                        while ((line = reader.readNext()) != null) {
-                                            DataBase.Books.setNewBook(this, line, (this.state >> 4) & 7);
-                                        }
-                                        reader.close();
-                                    } catch (CsvValidationException | IOException e) {
-                                        System.out.println("Error while updating file");
-                                        System.out.println(e.getMessage());
-                                    }
-                                    try {
-                                        Files.delete(Path.of(path));
-                                    } catch (IOException e) {
-                                        System.out.println(e.getMessage());
-                                    }
-                                    bot.sendMessage(id, "Success!", Bot.getKeyboard(adminBookKb));
-                                    return;
-                                }
-                                bot.sendMessage(id, "Something went wrong");
+                            case "Culture" -> {
+                                this.state += 1 << 4;
+                                bot.sendMessage(id, "Choose an action with library", Bot.getKeyboard(keyboards[0][6]));
                             }
-                            case 2 -> {
-                                this.state -= 2 << 7;
-                                if (command.getText().equals("Yes"))
-                                    DataBase.Books.rebaseTable(this, (this.state >> 4) & 7);
+                            case "Medicine" -> {
+                                this.state += 2 << 4;
+                                bot.sendMessage(id, "Choose an action with library", Bot.getKeyboard(keyboards[0][6]));
+                            }
+                            case "Science" -> {
+                                this.state += 3 << 4;
+                                bot.sendMessage(id, "Choose an action with library", Bot.getKeyboard(keyboards[0][6]));
+                            }
+                            case "Economics" -> {
+                                this.state += 4 << 4;
+                                bot.sendMessage(id, "Choose an action with library", Bot.getKeyboard(keyboards[0][6]));
+                            }
+                            case "Climate" -> {
+                                this.state += 5 << 4;
+                                bot.sendMessage(id, "Choose an action with library", Bot.getKeyboard(keyboards[0][6]));
+                            }
+                            case "Art" -> {
+                                this.state += 6 << 4;
+                                bot.sendMessage(id, "Choose an action with library", Bot.getKeyboard(keyboards[0][6]));
+                            }
+                            case "ChatGPT" -> {
+                                this.state += 7 << 4;
+                                bot.sendMessage(id, "Hello, It's a chatGPT assistant. Ask interesting question", Bot.getKeyboard(keyboards[0][8]));
+                            }
+                            case "Other" -> {
+                                this.state += 8 << 4;
+                                bot.sendMessage(id, "Bot created by dyda0505", Bot.getKeyboard(keyboards[0][7]));//TODO: Сделать нормальное описание
+                            }
+                            case "Reselect language" -> {
+                                this.state = 0;
+                                bot.sendMessage(id, "Choose a language", Bot.getKeyboard(languageKeyboard));
                             }
                             default -> {
-                                switch (command.getText()) {
-                                    case "Add new table" -> {
-                                        this.state += 1 << 7;
-                                        bot.sendMessage(id, "Send table");
-                                    }
-                                    case "Format library" -> {
-                                        this.state += 2 << 7;
-                                        bot.sendMessage(id, "Are you sure? Type \"Yes\" to format library");
-                                    }
-                                    case "Back" -> {
-                                        this.state = 1 + (1 << 3);
-                                        bot.sendMessage(id, "Type command", Bot.getKeyboard(defaultAdminKb));
-                                    }
-                                    default -> {
-                                        bot.defaultMessage(id);
-                                    }
-                                }
+                                bot.defaultMessage(id);
                             }
+                        }
                     }
+                    //Если команда - chatGPT
+                    if (((this.state >> 4) & 15) == 7) {
+                        switch (command.getText()) {
+                            //Выйти из chatGPT
+                            case "Quit ChatGPT dialog /\\/\\" -> {
+                                this.state -= 7 << 4;
+                                bot.sendMessage(id, "Bye!");
+                            }
+                            //Удалить историю запросов
+                            case "/Clear bot history" -> {
+                                try {
+                                    Files.delete(Path.of("gpthistory/" + id.toString() + ".txt"));
+                                } catch (IOException e) {}
+                            }
+                            default -> {
 
-                    }
-                }
-                case 2 -> {
-                    switch ((this.state >> 4) & 7) {
-                        case 1 -> {
-                            this.state = 1 + (2 << 1);
-                            DataBase.Admins.addNewAdmin(this, Long.parseLong(command.getText()));
-                        }
-                        case 2 -> {
-                            this.state = 1 + (2 << 1);
-                            DataBase.Admins.removeAdmin(this, Long.parseLong(command.getText()));
-                        }
-                        default -> {
-                            switch (command.getText()) {
-                                case "Add new admin" -> {
-                                    this.state = 1 + (2 << 1) + (1 << 4);
-                                    bot.sendMessage(id, "Write his id");
-                                }
-                                case "Delete existing admin" -> {
-                                    this.state = 1 + (2 << 1) + (2 << 4);
-                                    bot.sendMessage(id, "Write his id");
-                                }
-                                case "Get list of admins" -> {
-                                    List<String> val = DataBase.Admins.getAdmins(this);
-                                    if (val != null)
-                                        bot.SendMessages(id, val, Bot.getKeyboard(adminAdminsKb));
-                                }
-                                case "Back" -> {
-                                    this.state = 1;
-                                    bot.sendMessage(id, "Type command", Bot.getKeyboard(defaultAdminKb));
-                                }
-                                default -> {
-                                    bot.defaultMessage(id);
-                                }
                             }
-                        }
-                    }
-                }
-                case 3 -> {
-                    switch (command.getText()) {
-                        case "Start draw" -> {
-                            bot.draw = new DataBase.Draw();
-                        }
-                        case "Stop draw" -> {
-                            bot.sendMessage(id, "Winner of draw is: " + bot.draw.getResults());
-                        }
-                        case "Back" -> {
-                            this.state = 1;
-                            bot.sendMessage(id, "Type command", Bot.getKeyboard(defaultAdminKb));
-                        }
-                        default -> {
-                            bot.defaultMessage(id);
-                        }
-                    }
-                }
-                default -> {
-                    switch (command.getText()) {
-                        case "Library management" -> {
-                            this.state = 1 + (1 << 1);
-                            bot.sendMessage(id, "Choose a theme of library", Bot.getKeyboard(libraryThemes));
-                        }
-                        case "Admins panel" -> {
-                            this.state = 1 + (2 << 1);
-                            bot.sendMessage(id, "Be careful on editing this case", Bot.getKeyboard(adminAdminsKb));
-                        }
-                        case "Draw settings" -> {
-                            this.state = 1 + (3 << 1);
-                            bot.sendMessage(id, "Type action", Bot.getKeyboard(adminDrawKb));
-                        }
-                        case "Turn off" -> {
-                            this.state = 0;
-                            bot.sendMessage(id, "Touch button to interact", Bot.getKeyboard(defaulUserKb));
-                        }
-                        default -> {
-                            bot.defaultMessage(id);
                         }
                     }
                 }
             }
-        }
-        else {
-            switch ((this.state >> 1) & 7) {
-                case 1 -> {
-                    if (((this.state >> 4) & 7) == 0) {
-                        switch (command.getText()) {
-                            case "Culture" -> this.state += (1 << 4);
-                            case "Medicine" -> this.state += (2 << 4);
-                            case "Science" -> this.state += (3 << 4);
-                            case "Economics" -> this.state += (4 << 4);
-                            case "Climate" -> this.state += (5 << 4);
-                            case "Art" -> this.state += (6 << 4);
-                            case "Back" -> this.state = 0;
-                        }
-                        //TODO:Удалить, как добавят новые бд
-                        if (this.state == 0) {
-                            bot.sendMessage(id, "Type a command", Bot.getKeyboard(defaulUserKb));
-                        } /*else if (((this.state >> 4) & 7) != 3) {
-                            bot.sendMessage(id, "On developing \uD83D\uDEE0", Bot.getKeyboard(libraryThemes));
-                            this.state -= ((this.state >> 4) & 7) << 4;
-                        } */else {
-                            bot.sendMessage(id, "What do you learn about?", Bot.getKeyboard(userBookKb));
-                        }
-                    } else {
-
-                        switch ((this.state >> 11) & 7) {
-                            case 1 -> {
-                                this.state -= (1 << 11);
-                                ArrayDeque<String[]> result = DataBase.Books.getBookByName(command.getText(), (this.state >> 4) & 7);
-                                if (result != null && !result.isEmpty()) {
-                                    for (String[] elem : result) {
-                                        bot.createAndSendMessage(id, elem[0] + "\n Link for downloading: " + elem[1], Bot.getKeyboard(userBookKb));
-                                    }
-                                } else {
-                                    bot.sendMessage(id, "There is no results...", Bot.getKeyboard(userBookKb));
-                                }
-                            }
-                            case 2 -> {
-                                this.state -= (2 << 11);
-                                DataBase.Books.Book book = DataBase.Books.getBook(command.getText(), (this.state >> 4) & 7);
-                                int[] res;
-                                if (book != null) {
-                                    res = DataBase.Books.getRecommendation(book.genres.split(", "), (this.state >> 4) & 7);
-                                } else {
-                                    res = DataBase.Books.getRecommendation(new String[]{command.getText()}, (this.state >> 4) & 7);
-                                }
-                                if (res != null) {
-                                    DataBase.Books.Book temp;
-                                    for (int i : res) {
-                                        temp = DataBase.Books.getBook(String.valueOf(i), (this.state >> 4) & 7);
-                                        bot.sendMessage(id, temp.title + ". " + temp.description, Bot.getKeyboard(userBookKb));
-                                    }
-                                } else
-                                    bot.sendMessage(id, "There is no recommendation for you...");
-                            }
-                            default -> {
-                                switch (command.getText()) {
-                                    case "Find book" -> {
-                                        state += (1 << 11);
-                                        bot.sendMessage(id, "Write title or id of book");
-                                    }
-                                    case "Recommend book" -> {
-                                        state += (2 << 11);
-                                        bot.sendMessage(id, "Write id of book or genre");
-                                    }
-                                    case "Get library" -> {
-                                        List<ArrayDeque<String>> result = DataBase.Books.getTitles((this.state >> 4) & 7);
-                                        if (result != null && !result.isEmpty()) {
-                                            //Выводим список. Иначе спим
-                                            int currentLength = 0;
-                                            String line;
-                                            StringBuilder message = new StringBuilder();
-                                            for (ArrayDeque<String> elem : result) {
-                                                line = elem.getFirst() + "; " + elem.getLast();
-                                                if (currentLength + 1 + line.length() < 4096) {
-                                                    message.append(line).append("\n");
-                                                    currentLength += line.length() + 1;
-                                                } else {
-                                                    bot.sendMessage(id, message.toString());
-                                                    currentLength = line.length();
-                                                    message = new StringBuilder(line);
-                                                }
-                                            }
-                                            if (!message.isEmpty()) {
-                                                bot.sendMessage(id, message.toString());
-                                            }
-                                        }
-                                    }
-                                    case "Back" -> {
-                                        state = (1 << 1);
-                                        bot.sendMessage(id, "Touch needed command", Bot.getKeyboard(libraryThemes));
-                                    }
-                                    default -> {
-                                        bot.defaultMessage(id);
-                                    }
-                                }
-                            }
-                        }
+            //Выбираем язык
+            default -> {
+                switch (command.getText()) {
+                    case "English" -> {
+                        this.state += 1;
                     }
-                }
-                case 2 -> {
-                    switch (command.getText()) {
-                        case "Donations" -> {
-                            bot.sendMessage(id, "We rely on the generosity of people like you to support our mission. Your donation will make a real difference in the lives of those we serve. Thank you for your support. \n Crypto wallet for donations (etherium): 0x01D429C88Acf17C719a258162671e8c8461a3D5C");
-                        }
-                        case "Buy ADS" -> {
-                            bot.sendMessage(id, "Please write to the administrator @kabaniery to publish advertising");
-                        }
-                        case "Back" -> {
-                            state = 0;
-                            bot.sendMessage(id, "Type the command", Bot.getKeyboard(defaulUserKb));
-                        }
-                        default -> {
-                            bot.defaultMessage(id);
-                        }
-                    }
-                }
-                case 3 -> {
-                    switch (command.getText()) {
-                        case "Quit ChatGPT dialog /\\/\\":
-                            this.state = 0;
-                            bot.sendMessage(id, "Type the command", Bot.getKeyboard(defaulUserKb));
-                            break;
-                        case "/Clear bot history":
-                            // Очистить сообщения бота
-                            ExplorerManager.ChatGPTHistories.deleteHistory(id);
-                            break;
-                        default:
-                            bot.sendMessage(id, "ChatGPT is thinking about answer to your message...");
-                            //Получить список сообщений и вывести результат
-                            bot.createAndSendMessage(id, List.of(PythonScripts.getGPTMessages(id, command.getText())), command.getMessageId());
-
-                    }
-                }
-                default -> {
-                    switch (command.getText()) {
-                        case "Go to library":
-                            state = 1 << 1;
-                            bot.sendMessage(id, "Please, choose a theme", Bot.getKeyboard(libraryThemes));
-                            break;
-                        case "ChatGPT":
-                            state = 3 << 1;
-                            bot.sendMessage(id, "Welcome to ChatGPT helper. Ask something me", Bot.getKeyboard(userChatgptKb));
-                            break;
-                        case "Other":
-                            state = 2 << 1;
-                            bot.sendMessage(id, "Bot created by dyda0505", Bot.getKeyboard(userOtherKb));
-                            break;
-                        case "/admin":
-                            if (DataBase.isAdmin(id)) {
-                                this.state = 1;
-                                bot.sendMessage(id, "Welcome back", Bot.getKeyboard(defaultAdminKb));
-                                break;
-                            }
-                        default:
-                            bot.defaultMessage(id);
+                    default -> {
+                        bot.sendMessage(id, "Please, choose one of selected buttons");
                     }
                 }
             }
