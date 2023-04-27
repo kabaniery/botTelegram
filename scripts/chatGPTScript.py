@@ -12,7 +12,6 @@ try:
 		temp = {"role": "assistant", "content": string}
 	temp["role"] = "user"
 	m.append(temp)
-	file.close()
 except:
 	print("Something went wrong...")
 	sys.exit(0)
