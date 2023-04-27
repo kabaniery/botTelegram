@@ -210,7 +210,22 @@ public class Bot extends TelegramLongPollingBot {
         }
     }
     public void createAndSendMessage(Long id, List<String> result, ReplyKeyboardMarkup keyboardMarkup) {
+        StringBuilder temp = new StringBuilder();
+        int length = 0;
+        for (String elem: result) {
+            if (length + elem.length() + 1 < 4096) {
+                temp.append(elem).append("\n");
+                length += elem.length() + 1;
+            } else {
+                createAndSendMessage(id, temp.toString(), keyboardMarkup);
+                temp = new StringBuilder(elem);
+                length = elem.length();
+            }
+        }
 
+        if (!temp.isEmpty()) {
+            createAndSendMessage(id, temp.toString(), keyboardMarkup);
+        }
     }
 
     public ReplyKeyboardMarkup getDefaulKeyboard() {
