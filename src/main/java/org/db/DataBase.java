@@ -326,7 +326,7 @@ public class DataBase {
                     }
                 }
                 try {
-                    st.executeUpdate("drop table " + booksDB[theme]);
+                    //st.executeUpdate("drop table " + booksDB[theme]);
                     st.executeUpdate("CREATE TABLE `botinformation`.`" + booksDB[theme] + "` (\n" +
                             "  `id` INT NOT NULL AUTO_INCREMENT,\n" +
                             "  `title` VARCHAR(200) NULL,\n" +

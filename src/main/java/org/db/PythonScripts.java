@@ -21,6 +21,7 @@ public class PythonScripts {
             }
             file.close();
         } catch (IOException e) {
+            System.out.println(e.getMessage());
             throw new RuntimeException(e);
         }
         try {
@@ -28,6 +29,7 @@ public class PythonScripts {
             BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
             return Integer.parseInt(reader.readLine());
         } catch (IOException e) {
+            System.out.println(e.getMessage());
             throw new RuntimeException(e);
         }
     }
@@ -37,12 +39,12 @@ public class PythonScripts {
             output.append(text+"\n");
             output.close();
             try {
-                Process p = Runtime.getRuntime().exec("py scripts/chatGPTScript.py " + Path.of("gpthistory/" + id.toString() + ".txt").toString());
+                Process p = Runtime.getRuntime().exec("py scripts/chatGPTScript.py " + "gpthistory/" + id.toString() + ".txt");
                 BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
                 String temp;
                 StringBuilder builder = new StringBuilder();
                 while ((temp = reader.readLine()) != null) {
-                    builder.append(temp);
+                    builder.append(temp+"\n");
                 }
                 return builder.toString().split("\n");
             } catch (IOException e) {
